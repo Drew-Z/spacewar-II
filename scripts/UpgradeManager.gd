@@ -31,6 +31,16 @@ const UPGRADE_POOL := [
 		"id": "bomb_supply",
 		"name": "Shockwave Supply",
 		"description": "Max shockwaves +1 and refill 1 charge."
+	},
+	{
+		"id": "hyperfield_tuning",
+		"name": "Hyperfield Tuning",
+		"description": "Max hyperspace +1, refill 1 charge, reduce jump failure risk."
+	},
+	{
+		"id": "solar_shield",
+		"name": "Solar Shield",
+		"description": "Reduce damage taken from the heavy star."
 	}
 ]
 

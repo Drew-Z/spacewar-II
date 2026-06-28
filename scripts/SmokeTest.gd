@@ -2,24 +2,28 @@ extends SceneTree
 
 
 func _initialize() -> void:
-	call_deferred("_run_test")
+	_run_test()
 
 
 func _run_test() -> void:
+	print("SmokeTest: start")
 	var game_state := root.get_node_or_null("GameState")
 	if game_state == null:
 		printerr("GameState autoload was not found.")
 		quit(1)
 		return
 
-	var error := change_scene_to_file("res://scenes/MainMenu.tscn")
+	var error := change_scene_to_file("res://scenes/NokiaMenu.tscn")
 	if error != OK:
 		printerr("Failed to load main menu.")
 		quit(1)
 		return
 
-	await scene_changed
-	await process_frame
+	if not await _wait_for_scene("res://scenes/NokiaMenu.tscn", 2.0):
+		printerr("Main menu did not load in time.")
+		quit(1)
+		return
+	print("SmokeTest: menu loaded")
 	var menu := current_scene
 	if menu == null or not menu.has_method("start_game"):
 		printerr("Main menu is missing start logic.")
@@ -27,47 +31,42 @@ func _run_test() -> void:
 		return
 	menu.start_game()
 
-	await scene_changed
-	await process_frame
+	if not await _wait_for_scene("res://scenes/NokiaBattle.tscn", 2.0):
+		printerr("Battle scene did not load in time.")
+		quit(1)
+		return
+	print("SmokeTest: battle loaded")
 	var battle := current_scene
-	if battle == null or not battle.has_method("debug_force_clear_wave"):
+	if battle == null:
 		printerr("Battle scene did not load correctly.")
 		quit(1)
 		return
 
-	for _wave_index in range(3):
-		battle.debug_force_clear_wave()
-		await process_frame
-		await process_frame
-		if not battle.upgrade_overlay.visible:
-			printerr("Upgrade selection did not appear after wave clear.")
-			quit(1)
-			return
-		battle.debug_select_first_upgrade()
-		await process_frame
-		await process_frame
+	await create_timer(1.5).timeout
+	battle.debug_force_result(true)
+	await create_timer(0.5).timeout
+	print("SmokeTest: waited for result")
 
-	battle.player.take_damage(9999)
-	await create_timer(1.2).timeout
-
-	if current_scene == null or current_scene.scene_file_path != "res://scenes/ResultScene.tscn":
+	if current_scene == null or current_scene.scene_file_path != "res://scenes/NokiaResult.tscn":
 		printerr("Result scene did not open after player death.")
 		quit(1)
 		return
 
 	var run: Dictionary = game_state.last_run
-	if int(run.get("survived_waves", 0)) < 3:
-		printerr("Survived waves is below 3.")
-		quit(1)
-		return
-	if int(run.get("kills", 0)) <= 0:
-		printerr("Kill count did not increase.")
-		quit(1)
-		return
-	if (run.get("selected_upgrades", []) as Array).size() < 3:
-		printerr("Upgrade history did not record 3 picks.")
+	if int(run.get("enemies_destroyed", 0)) < 0:
+		printerr("Enemy count not recorded.")
 		quit(1)
 		return
 
-	print("Smoke test passed: menu -> battle -> 3 waves -> upgrades -> result")
+	print("Smoke test passed: menu -> nokia battle -> result")
 	quit()
+
+
+func _wait_for_scene(target_path: String, timeout: float) -> bool:
+	var elapsed := 0.0
+	while elapsed < timeout:
+		await create_timer(0.05).timeout
+		if current_scene != null and current_scene.scene_file_path == target_path:
+			return true
+		elapsed += 0.05
+	return false

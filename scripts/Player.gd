@@ -15,6 +15,7 @@ var fire_timer := 0.0
 var bullet_damage := 1
 var bullet_speed := 700.0
 var invulnerability_timer := 0.0
+var star_damage_timer := 0.0
 var aim_direction := Vector2.UP
 var combat_enabled := true
 var alive := true
@@ -51,6 +52,7 @@ func _physics_process(delta: float) -> void:
 
 	fire_timer = max(0.0, fire_timer - delta)
 	invulnerability_timer = max(0.0, invulnerability_timer - delta)
+	star_damage_timer = max(0.0, star_damage_timer - delta)
 
 	if invulnerability_timer > 0.0 and int(invulnerability_timer * 20.0) % 2 == 0:
 		body_polygon.color = Color(1.0, 0.55, 0.55, 1.0)
@@ -66,12 +68,19 @@ func _physics_process(delta: float) -> void:
 	if input_vector != Vector2.ZERO:
 		aim_direction = input_vector.normalized()
 
-	velocity = input_vector * move_speed
+	var gravity_vector := Vector2.ZERO
+	if battle != null:
+		gravity_vector = battle.get_gravity_vector(global_position)
+
+	velocity = input_vector * move_speed + gravity_vector
 	move_and_slide()
 
 	if battle != null:
 		var rect: Rect2 = battle.get_playfield_rect()
 		global_position = global_position.clamp(rect.position, rect.position + rect.size)
+		if battle.is_in_star_danger(global_position) and star_damage_timer <= 0.0:
+			star_damage_timer = 0.4
+			take_damage(battle.get_star_damage())
 
 	if Input.is_key_pressed(KEY_SPACE):
 		_try_fire_primary()
@@ -86,6 +95,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_switch_secondary()
 			KEY_E:
 				_use_secondary()
+			KEY_F:
+				_trigger_hyperspace()
 
 
 func _read_move_input() -> Vector2:
@@ -152,6 +163,11 @@ func _use_secondary() -> void:
 			battle.trigger_shockwave(global_position, 150.0, bullet_damage + 2)
 
 
+func _trigger_hyperspace() -> void:
+	if battle != null:
+		battle.try_player_hyperspace()
+
+
 func get_primary_status_text() -> String:
 	if fire_timer <= 0.0:
 		return "Primary READY"
@@ -174,6 +190,19 @@ func get_secondary_status_text() -> String:
 	]
 
 
+func get_system_status_text() -> String:
+	var charges := int(GameState.get_stat("hyperspace_charges", 0))
+	var max_charges := int(GameState.get_stat("max_hyperspace_charges", 0))
+	var use_count := int(GameState.get_stat("hyperspace_uses", 0))
+	var risk: float = battle.get_hyperspace_failure_risk() if battle != null else 0.0
+	return "Hyper %d / %d  Use %d  Risk %d%%" % [
+		charges,
+		max_charges,
+		use_count,
+		int(risk * 100.0)
+	]
+
+
 func take_damage(amount: int) -> void:
 	if not alive or invulnerability_timer > 0.0:
 		return
@@ -187,3 +216,7 @@ func take_damage(amount: int) -> void:
 		alive = false
 		combat_enabled = false
 		died.emit()
+
+
+func grant_invulnerability(duration: float) -> void:
+	invulnerability_timer = max(invulnerability_timer, duration)

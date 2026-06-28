@@ -1,8 +1,8 @@
 extends Node
 
-const MENU_SCENE := "res://scenes/MainMenu.tscn"
-const BATTLE_SCENE := "res://scenes/BattleScene.tscn"
-const RESULT_SCENE := "res://scenes/ResultScene.tscn"
+const MENU_SCENE := "res://scenes/NokiaMenu.tscn"
+const BATTLE_SCENE := "res://scenes/NokiaBattle.tscn"
+const RESULT_SCENE := "res://scenes/NokiaResult.tscn"
 
 var current_run: Dictionary = {}
 var last_run: Dictionary = {}
@@ -10,21 +10,26 @@ var last_run: Dictionary = {}
 
 func begin_run() -> void:
 	current_run = {
-		"current_wave": 1,
-		"survived_waves": 0,
-		"kills": 0,
-		"selected_upgrades": [],
+		"current_stage": 1,
+		"total_stages": 3,
+		"score": 0,
+		"lives": 3,
 		"max_health": 100,
 		"current_health": 100,
+		"weapon_level": 1,
+		"bombs": 2,
+		"pickups_collected": 0,
+		"enemies_destroyed": 0,
+		"best_chain": 0,
+		"chain_bonus_score": 0,
+		"stage_clear_bonus": 0,
+		"distance": 0.0,
+		"selected_upgrades": [],
+		"ship_name": "Falcon",
 		"move_speed": 260.0,
-		"fire_cooldown": 0.22,
+		"fire_cooldown": 0.18,
 		"bullet_damage": 1,
-		"bullet_speed": 700.0,
-		"missile_ammo": 6,
-		"max_missile_ammo": 6,
-		"bomb_charges": 2,
-		"max_bomb_charges": 2,
-		"secondary_index": 0
+		"bullet_speed": 760.0
 	}
 
 
@@ -37,12 +42,12 @@ func set_stat(key: StringName, value) -> void:
 
 
 func add_kill() -> void:
-	current_run["kills"] = int(current_run.get("kills", 0)) + 1
+	current_run["enemies_destroyed"] = int(current_run.get("enemies_destroyed", 0)) + 1
+	current_run["score"] = int(current_run.get("score", 0)) + 100
 
 
 func record_wave_cleared(wave_number: int) -> void:
-	current_run["survived_waves"] = max(int(current_run.get("survived_waves", 0)), wave_number)
-	current_run["current_wave"] = wave_number + 1
+	current_run["current_stage"] = max(int(current_run.get("current_stage", 1)), wave_number + 1)
 
 
 func apply_upgrade(upgrade_id: String) -> void:
@@ -62,6 +67,12 @@ func apply_upgrade(upgrade_id: String) -> void:
 		"bomb_supply":
 			current_run["max_bomb_charges"] = int(current_run["max_bomb_charges"]) + 1
 			current_run["bomb_charges"] = int(current_run["bomb_charges"]) + 1
+		"hyperfield_tuning":
+			current_run["max_hyperspace_charges"] = int(current_run["max_hyperspace_charges"]) + 1
+			current_run["hyperspace_charges"] = int(current_run["hyperspace_charges"]) + 1
+			current_run["hyperspace_stability"] = min(float(current_run["hyperspace_stability"]) + 0.08, 0.24)
+		"solar_shield":
+			current_run["star_resistance"] = min(float(current_run["star_resistance"]) + 0.35, 0.7)
 		_:
 			push_warning("Unknown upgrade id: %s" % upgrade_id)
 

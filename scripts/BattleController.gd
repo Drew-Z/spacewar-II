@@ -11,6 +11,7 @@ var wave_director = WaveDirectorScript.new()
 var upgrade_manager = UpgradeManagerScript.new()
 
 @onready var player = $Player
+@onready var gravity_star = $GravityStar
 @onready var enemy_layer: Node2D = $EnemyLayer
 @onready var projectile_layer: Node2D = $ProjectileLayer
 @onready var effect_layer: Node2D = $EffectLayer
@@ -22,6 +23,7 @@ var current_wave := 0
 var remaining_to_spawn := 0
 var active_enemies := 0
 var current_wave_config: Dictionary = {}
+var spawn_queue: Array = []
 
 
 func _ready() -> void:
@@ -43,10 +45,33 @@ func _process(_delta: float) -> void:
 	hud.set_wave(GameState.get_stat("current_wave", 1), active_enemies, remaining_to_spawn)
 	hud.set_primary_status(player.get_primary_status_text())
 	hud.set_secondary_status(player.get_secondary_status_text())
+	hud.set_systems_status(player.get_system_status_text())
 
 
 func get_playfield_rect() -> Rect2:
 	return PLAYFIELD
+
+
+func get_gravity_vector(position: Vector2) -> Vector2:
+	var offset: Vector2 = gravity_star.global_position - position
+	var distance_squared: float = max(offset.length_squared(), 3600.0)
+	var pull_strength: float = gravity_star.gravity_strength / distance_squared
+	return offset.normalized() * min(pull_strength, 120.0)
+
+
+func is_in_star_danger(position: Vector2) -> bool:
+	return position.distance_to(gravity_star.global_position) <= gravity_star.danger_radius
+
+
+func get_star_damage() -> int:
+	var resistance := float(GameState.get_stat("star_resistance", 0.0))
+	return max(4, int(round(gravity_star.contact_damage * (1.0 - resistance))))
+
+
+func get_hyperspace_failure_risk() -> float:
+	var uses := int(GameState.get_stat("hyperspace_uses", 0))
+	var stability := float(GameState.get_stat("hyperspace_stability", 0.0))
+	return clampf(0.08 + uses * 0.11 - stability, 0.04, 0.55)
 
 
 func get_primary_direction(origin: Vector2, fallback_direction: Vector2) -> Vector2:
@@ -96,6 +121,7 @@ func trigger_shockwave(origin: Vector2, radius: float, damage: int) -> void:
 func debug_force_clear_wave() -> void:
 	var pending_kills := remaining_to_spawn
 	remaining_to_spawn = 0
+	spawn_queue.clear()
 	spawn_timer.stop()
 	for enemy in enemy_layer.get_children():
 		if enemy.has_method("take_damage"):
@@ -110,11 +136,21 @@ func debug_select_first_upgrade() -> void:
 	upgrade_overlay.debug_pick_first()
 
 
+func debug_trigger_hyperspace() -> void:
+	try_player_hyperspace()
+
+
+func debug_force_player_death() -> void:
+	player.invulnerability_timer = 0.0
+	player.take_damage(9999)
+
+
 func _start_wave(wave_number: int) -> void:
 	current_wave = wave_number
 	GameState.set_stat("current_wave", current_wave)
 	current_wave_config = wave_director.build_wave(current_wave)
-	remaining_to_spawn = int(current_wave_config.get("enemy_count", 0))
+	spawn_queue = (current_wave_config.get("spawn_queue", []) as Array).duplicate(true)
+	remaining_to_spawn = spawn_queue.size()
 	active_enemies = 0
 
 	player.set_combat_enabled(true)
@@ -125,25 +161,77 @@ func _start_wave(wave_number: int) -> void:
 
 
 func _spawn_enemy() -> void:
+	if spawn_queue.is_empty():
+		return
+
+	var enemy_data: Dictionary = spawn_queue.pop_front()
 	var enemy = enemy_scene.instantiate()
 	enemy.global_position = _get_spawn_position()
-	enemy.configure(current_wave_config, player)
-	enemy.defeated.connect(_on_enemy_defeated)
 	enemy_layer.add_child(enemy)
+	var enemy_config := current_wave_config.duplicate(true)
+	for key in enemy_data.keys():
+		enemy_config[key] = enemy_data[key]
+	enemy.configure(enemy_config, player, self)
+	enemy.defeated.connect(_on_enemy_defeated)
 	active_enemies += 1
 
 
 func _get_spawn_position() -> Vector2:
-	var edge := randi_range(0, 3)
-	match edge:
-		0:
-			return Vector2(randf_range(PLAYFIELD.position.x, PLAYFIELD.end.x), PLAYFIELD.position.y)
-		1:
-			return Vector2(randf_range(PLAYFIELD.position.x, PLAYFIELD.end.x), PLAYFIELD.end.y)
-		2:
-			return Vector2(PLAYFIELD.position.x, randf_range(PLAYFIELD.position.y, PLAYFIELD.end.y))
-		_:
-			return Vector2(PLAYFIELD.end.x, randf_range(PLAYFIELD.position.y, PLAYFIELD.end.y))
+	for _attempt in range(10):
+		var edge := randi_range(0, 3)
+		var candidate := Vector2.ZERO
+		match edge:
+			0:
+				candidate = Vector2(randf_range(PLAYFIELD.position.x, PLAYFIELD.end.x), PLAYFIELD.position.y)
+			1:
+				candidate = Vector2(randf_range(PLAYFIELD.position.x, PLAYFIELD.end.x), PLAYFIELD.end.y)
+			2:
+				candidate = Vector2(PLAYFIELD.position.x, randf_range(PLAYFIELD.position.y, PLAYFIELD.end.y))
+			_:
+				candidate = Vector2(PLAYFIELD.end.x, randf_range(PLAYFIELD.position.y, PLAYFIELD.end.y))
+		if candidate.distance_to(gravity_star.global_position) > gravity_star.safe_spawn_radius:
+			return candidate
+	return PLAYFIELD.get_center() + Vector2(0, 180)
+
+
+func get_safe_hyperspace_position() -> Vector2:
+	for _attempt in range(20):
+		var candidate := Vector2(
+			randf_range(PLAYFIELD.position.x + 32.0, PLAYFIELD.end.x - 32.0),
+			randf_range(PLAYFIELD.position.y + 32.0, PLAYFIELD.end.y - 32.0)
+		)
+		if candidate.distance_to(gravity_star.global_position) <= gravity_star.safe_spawn_radius:
+			continue
+		var blocked := false
+		for enemy in enemy_layer.get_children():
+			if candidate.distance_to(enemy.global_position) < 56.0:
+				blocked = true
+				break
+		if not blocked:
+			return candidate
+	return PLAYFIELD.get_center() + Vector2(0, 160)
+
+
+func try_player_hyperspace() -> void:
+	if upgrade_overlay.visible or not player.is_alive():
+		return
+
+	var charges := int(GameState.get_stat("hyperspace_charges", 0))
+	if charges <= 0:
+		hud.show_message("No Hyper Charges")
+		return
+
+	var failure_risk := get_hyperspace_failure_risk()
+	GameState.set_stat("hyperspace_charges", charges - 1)
+	GameState.set_stat("hyperspace_uses", int(GameState.get_stat("hyperspace_uses", 0)) + 1)
+	player.global_position = get_safe_hyperspace_position()
+
+	if randf() < failure_risk:
+		hud.show_message("Hyper Exit Unstable")
+		player.take_damage(35)
+	else:
+		hud.show_message("Hyperspace Jump")
+		player.grant_invulnerability(0.9)
 
 
 func _enter_upgrade_phase() -> void:
@@ -159,10 +247,11 @@ func _refresh_hud() -> void:
 	hud.set_wave(GameState.get_stat("current_wave", 1), active_enemies, remaining_to_spawn)
 	hud.set_primary_status(player.get_primary_status_text())
 	hud.set_secondary_status(player.get_secondary_status_text())
+	hud.set_systems_status(player.get_system_status_text())
 
 
 func _on_spawn_timer_timeout() -> void:
-	if remaining_to_spawn <= 0:
+	if remaining_to_spawn <= 0 or spawn_queue.is_empty():
 		spawn_timer.stop()
 		return
 
