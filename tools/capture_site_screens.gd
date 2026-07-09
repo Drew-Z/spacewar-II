@@ -1,12 +1,13 @@
 extends SceneTree
 
-const OUTPUT_DIR := "D:/workspace4Cursor/game/blog/public/images/projects"
+const DEFAULT_OUTPUT_DIR := "user://spacewar-ii-screenshots"
 const OUTPUT_PREFIX := "spacewar-ii"
 const MENU_SCENE := "res://scenes/NokiaMenu.tscn"
 const BATTLE_SCENE := "res://scenes/NokiaBattle.tscn"
 const RESULT_SCENE := "res://scenes/NokiaResult.tscn"
 
 var game_state: Node
+var output_dir: String
 
 
 func _initialize() -> void:
@@ -14,7 +15,8 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var mkdir_error := DirAccess.make_dir_recursive_absolute(OUTPUT_DIR)
+	output_dir = _resolve_output_dir()
+	var mkdir_error := DirAccess.make_dir_recursive_absolute(output_dir)
 	if mkdir_error != OK and mkdir_error != ERR_ALREADY_EXISTS:
 		push_error("Failed to create screenshot output dir: %s" % mkdir_error)
 		quit(1)
@@ -114,8 +116,37 @@ func _settle_frames(frame_count: int) -> void:
 
 func _save_viewport(file_name: String) -> void:
 	await process_frame
-	var image := root.get_texture().get_image()
-	var path := "%s/%s" % [OUTPUT_DIR, file_name]
+	var viewport_texture := root.get_texture()
+	if viewport_texture == null:
+		push_error("Viewport texture is unavailable. Run this script with a rendering display, not dummy/headless mode.")
+		quit(1)
+		return
+
+	var image := viewport_texture.get_image()
+	if image == null:
+		push_error("Viewport image is unavailable. Run this script with a rendering display, not dummy/headless mode.")
+		quit(1)
+		return
+
+	var path := "%s/%s" % [output_dir, file_name]
 	var error := image.save_png(path)
 	if error != OK:
 		push_error("Failed to save screenshot %s: %s" % [path, error])
+
+
+func _resolve_output_dir() -> String:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--output-dir="):
+			return _globalize_output_dir(argument.get_slice("=", 1))
+
+	var env_output_dir := OS.get_environment("SPACEWAR_II_SCREENSHOT_DIR").strip_edges()
+	if not env_output_dir.is_empty():
+		return _globalize_output_dir(env_output_dir)
+
+	return _globalize_output_dir(DEFAULT_OUTPUT_DIR)
+
+
+func _globalize_output_dir(path: String) -> String:
+	if path.begins_with("res://") or path.begins_with("user://"):
+		return ProjectSettings.globalize_path(path)
+	return path
