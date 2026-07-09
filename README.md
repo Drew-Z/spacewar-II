@@ -2,6 +2,8 @@
 
 Godot 4 vertical shooter prototype inspired by the compact, fast-loop mobile shooter era. The project focuses on a playable single-player route with auto fire, pickups, stage pressure, boss encounters, and a concise result screen.
 
+简体中文文档：[README.zh-CN.md](README.zh-CN.md)
+
 ![Godot](https://img.shields.io/badge/Godot-4.6.1-478cbf)
 ![Status](https://img.shields.io/badge/status-playable%20prototype-16a34a)
 ![Target](https://img.shields.io/badge/target-PC%20%2F%20Web-2563eb)
