@@ -206,4 +206,4 @@ godot --path . --script res://tools/capture_site_screens.gd -- --output-dir=./bu
 
 ## License
 
-No standalone license file is included yet. Add a clear license before advertising this project for unrestricted open-source reuse.
+This repository is licensed under the [Apache License 2.0](LICENSE).
