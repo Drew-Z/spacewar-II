@@ -7,3 +7,15 @@ export_presets.cfg
 *.log
 Thumbs.db
 .DS_Store
+
+# Local AI/session artifacts
+.agent-work/
+.scratch/
+.claude/settings.local.json
+.codex/sessions/
+.codex/tmp/
+.trellis/.developer
+.trellis/.runtime/
+.trellis/tmp/
+.trellis/workspace/
+.trellis/tasks/archive/
